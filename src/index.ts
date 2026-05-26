@@ -77,6 +77,15 @@ export {
 export { Mutex, FileLock, processInBatches, debounce, throttle, MemoryMonitor } from './utils';
 export { FileWatcher, WatchOptions, PendingFile } from './sync';
 export { MCPServer } from './mcp';
+export {
+  buildVRGraph,
+  resolveGit4DPath,
+} from './vr/export';
+export type {
+  BuildVRGraphOptions,
+  VRGraphPayload,
+  VRServerOptions,
+} from './vr/types';
 
 /**
  * Options for initializing a new CodeGraph project
@@ -637,6 +646,17 @@ export class CodeGraph {
   }
 
   /**
+   * Get all indexed nodes.
+   *
+   * This is intentionally exposed for local visualization/export surfaces
+   * such as the VR graph viewer. Agent-facing MCP tools should keep using
+   * bounded query methods so they do not flood model context.
+   */
+  getAllNodes(): Node[] {
+    return this.queries.getAllNodes();
+  }
+
+  /**
    * Search nodes by text
    */
   searchNodes(query: string, options?: SearchOptions): SearchResult[] {
@@ -659,6 +679,16 @@ export class CodeGraph {
    */
   getIncomingEdges(nodeId: string): Edge[] {
     return this.queries.getIncomingEdges(nodeId);
+  }
+
+  /**
+   * Get all indexed edges.
+   *
+   * Use for local visualizations only; MCP responses should remain focused
+   * through callers/callees/impact/context tools.
+   */
+  getAllEdges(): Edge[] {
+    return this.queries.getAllEdges();
   }
 
   // ===========================================================================

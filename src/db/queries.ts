@@ -489,6 +489,17 @@ export class QueryBuilder {
   }
 
   /**
+   * Get all edges in the database.
+   *
+   * Intended for bounded visualization/export paths that need a whole-graph
+   * snapshot before trimming the result for display.
+   */
+  getAllEdges(): Edge[] {
+    const rows = this.db.prepare('SELECT * FROM edges').all() as EdgeRow[];
+    return rows.map(rowToEdge);
+  }
+
+  /**
    * Get nodes by exact name match (uses idx_nodes_name index)
    */
   getNodesByName(name: string): Node[] {

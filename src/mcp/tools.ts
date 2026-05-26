@@ -5,6 +5,7 @@
  */
 
 import CodeGraph, { findNearestCodeGraphRoot } from '../index';
+import { buildVRGraph, resolveGit4DPath } from '../vr/export';
 import {
   detectWorktreeIndexMismatch,
   worktreeMismatchWarning,
@@ -69,6 +70,10 @@ const CONTAINER_NODE_KINDS = new Set<NodeKind>([
 function lastQualifierPart(symbol: string): string {
   const parts = symbol.split(/::|[./]/).filter((p) => p.length > 0);
   return parts[parts.length - 1] ?? symbol;
+}
+
+function shellQuote(value: string): string {
+  return JSON.stringify(value);
 }
 
 /**
@@ -516,6 +521,39 @@ export const tools: ToolDefinition[] = [
     },
   },
   {
+    name: 'codegraph_vr',
+    description: 'Prepare the WebXR/VR graph viewer launch command and report whether Git4D graph data is linked. Use when the user wants Quest 2+, Virtual Desktop, KAMUI4D-style, or spatial graph visualization. Does not start the long-running HTTP server inside MCP; run the returned codegraph vr command in a terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        host: {
+          type: 'string',
+          description: 'Host to bind when launching the CLI viewer. Use 0.0.0.0 for Quest/Virtual Desktop LAN access.',
+        },
+        port: {
+          type: 'number',
+          description: 'Port for the VR viewer (default: 8734).',
+          default: 8734,
+        },
+        maxNodes: {
+          type: 'number',
+          description: 'Maximum VR graph nodes to render (default: 3000).',
+          default: 3000,
+        },
+        maxEdges: {
+          type: 'number',
+          description: 'Maximum VR graph edges to render (default: 8000).',
+          default: 8000,
+        },
+        git4dPath: {
+          type: 'string',
+          description: 'Optional path to git4d graph JSON. Defaults to git4d-results/kamui4d-graph.json in the project.',
+        },
+        projectPath: projectPathProperty,
+      },
+    },
+  },
+  {
     name: 'codegraph_files',
     description: 'REQUIRED for file/folder exploration. Get the project file structure from the CodeGraph index. Returns a tree view of all indexed files with metadata (language, symbol count). Much faster than Glob/filesystem scanning. Use this FIRST when exploring project structure, finding files, or understanding codebase organization.',
     inputSchema: {
@@ -951,6 +989,10 @@ export class ToolHandler {
         const check = this.validateOptionalPath(args.pattern, 'pattern');
         if (typeof check === 'object' && check !== undefined) return check;
       }
+      if (args.git4dPath !== undefined) {
+        const check = this.validateOptionalPath(args.git4dPath, 'git4dPath');
+        if (typeof check === 'object' && check !== undefined) return check;
+      }
 
       // Read tools resolve through a single result variable so cross-cutting
       // notices — worktree-index mismatch (issue #155) and per-file
@@ -979,6 +1021,8 @@ export class ToolHandler {
           // (see handleStatus), so we skip the auto-banner wrapper here to
           // avoid duplicating the same info at the top of the response.
           return await this.handleStatus(args);
+        case 'codegraph_vr':
+          result = await this.handleVR(args); break;
         case 'codegraph_files':
           result = await this.handleFiles(args); break;
         case 'codegraph_trace':
@@ -2227,6 +2271,52 @@ export class ToolHandler {
       }
     }
 
+    return this.textResult(lines.join('\n'));
+  }
+
+  /**
+   * Handle codegraph_vr
+   *
+   * MCP hosts should not launch a long-running HTTP server as a tool call.
+   * This returns the exact CLI command and validates the current graph/git4d
+   * linkage so Codex, Hermes, and Cursor can guide the user without hanging.
+   */
+  private async handleVR(args: Record<string, unknown>): Promise<ToolResult> {
+    const cg = this.getCodeGraph(args.projectPath as string | undefined);
+    const projectRoot = cg.getProjectRoot();
+    const host = typeof args.host === 'string' && args.host.trim() ? args.host.trim() : '127.0.0.1';
+    const port = clamp(Number(args.port) || 8734, 1, 65535);
+    const maxNodes = clamp(Number(args.maxNodes) || 3000, 100, 100_000);
+    const maxEdges = clamp(Number(args.maxEdges) || 8000, 100, 250_000);
+    const git4dPath = typeof args.git4dPath === 'string' ? args.git4dPath : undefined;
+    const graph = buildVRGraph(cg, { maxNodes, maxEdges, git4dPath });
+    const resolvedGit4DPath = resolveGit4DPath(projectRoot, git4dPath);
+    const questFlag = host === '0.0.0.0' || host === '::' ? ' --quest' : ` --host ${shellQuote(host)}`;
+    const command = [
+      'codegraph vr',
+      shellQuote(projectRoot),
+      questFlag.trim(),
+      '--port',
+      String(port),
+      '--max-nodes',
+      String(maxNodes),
+      '--max-edges',
+      String(maxEdges),
+      git4dPath ? `--git4d ${shellQuote(resolvedGit4DPath)}` : '',
+    ].filter(Boolean).join(' ');
+
+    const lines = [
+      '## CodeGraph VR',
+      '',
+      `Project: ${projectRoot}`,
+      `Launch: \`${command}\``,
+      '',
+      `VR graph: ${graph.nodes.length.toLocaleString()} nodes, ${graph.edges.length.toLocaleString()} edges`,
+      `Git4D: ${graph.git4d.loaded ? 'linked' : graph.git4d.found ? 'found but not loaded' : 'not found'} (${resolvedGit4DPath})`,
+      `Git4D bridge edges: ${graph.git4d.bridgeCount.toLocaleString()}`,
+      '',
+      'For Quest 2+ through Virtual Desktop, open the Local URL shown by the CLI from the streamed desktop browser. For standalone Quest Browser over LAN, use HTTPS because immersive WebXR requires a secure context.',
+    ];
     return this.textResult(lines.join('\n'));
   }
 

@@ -344,6 +344,7 @@ codegraph callees <symbol>        # Find what a function/method calls (--limit, 
 codegraph impact <symbol>         # Analyze what code is affected by changing a symbol (--depth, --json)
 codegraph affected [files...]     # Find test files affected by changes (see below)
 codegraph serve --mcp             # Start MCP server
+codegraph vr [path]               # Start WebXR/VR graph viewer (--quest, --git4d)
 ```
 
 ### `codegraph affected`
@@ -392,6 +393,7 @@ When running as an MCP server, CodeGraph exposes these tools to Claude Code:
 | `codegraph_explore` | Return source for several related symbols grouped by file, plus a relationship map, in one call |
 | `codegraph_files` | Get indexed file structure (faster than filesystem scanning) |
 | `codegraph_status` | Check index health and statistics |
+| `codegraph_vr` | Prepare the WebXR/VR graph viewer launch command and report Git4D linkage |
 
 ---
 

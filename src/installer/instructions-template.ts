@@ -41,6 +41,7 @@ Use codegraph for **structural** questions — what calls what, what would break
 | "See several related symbols' source at once" | \`codegraph_explore\` |
 | "What files exist under path/" | \`codegraph_files\` |
 | "Is the index healthy?" | \`codegraph_status\` |
+| "Open the graph in VR / Quest / Virtual Desktop" | \`codegraph_vr\` for the launch command, then run \`codegraph vr\` |
 
 ### Rules of thumb
 
@@ -50,6 +51,8 @@ Use codegraph for **structural** questions — what calls what, what would break
 - **Don't chain \`codegraph_search\` + \`codegraph_node\`** when you just want context — \`codegraph_context\` is one call.
 - **Don't loop \`codegraph_node\` over many symbols** — one \`codegraph_explore\` call returns several symbols' source grouped in a single capped call, while each separate node/Read call re-reads the whole context and costs far more.
 - **Index lag — check the staleness banner, don't guess a wait.** When a codegraph response starts with "⚠️ Some files referenced below were edited since the last index sync…", the listed files are pending re-index — Read those specific files for accurate content. Files NOT in that banner are fresh and codegraph is authoritative for them. \`codegraph_status\` also lists pending files under "Pending sync".
+
+- **VR/spatial graph requests:** use \`codegraph_vr\` to confirm the Git4D link and get the exact \`codegraph vr\` command. The viewer is a local WebGL/WebXR server; do not try to start it inside an MCP tool call.
 
 ### If \`.codegraph/\` doesn't exist
 

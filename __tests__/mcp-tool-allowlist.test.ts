@@ -23,6 +23,7 @@ describe('CODEGRAPH_MCP_TOOLS allowlist', () => {
     expect(all).toContain('codegraph_explore');
     expect(all).toContain('codegraph_context');
     expect(all).toContain('codegraph_trace');
+    expect(all).toContain('codegraph_vr');
     expect(all.length).toBeGreaterThanOrEqual(10);
   });
 

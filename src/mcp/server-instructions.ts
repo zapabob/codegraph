@@ -46,6 +46,7 @@ of calls; a grep/read exploration is dozens.
 - **"Show me several related symbols' source / survey an area."** → \`codegraph_explore\` (ONE capped call; prefer over many codegraph_node/Read)
 - **"What's in directory X?"** → \`codegraph_files\`
 - **"Is the index ready / what's its size?"** → \`codegraph_status\`
+- **"Open this graph in VR / Quest / Virtual Desktop / KAMUI4D style."** → \`codegraph_vr\` for the launch command, then run \`codegraph vr\` in a terminal
 
 ## Common chains
 
@@ -53,6 +54,7 @@ of calls; a grep/read exploration is dozens.
 - **Onboarding**: \`codegraph_context\` first. If still unclear, \`codegraph_explore\` for breadth, then \`codegraph_node\` on specific symbols.
 - **Refactor planning**: \`codegraph_search\` → \`codegraph_callers\` → \`codegraph_impact\`. The blast-radius answer comes from impact, not from walking callers manually.
 - **Debugging a regression**: \`codegraph_callers\` of the suspected symbol; widen with \`codegraph_impact\` if an unexpected call appears.
+- **VR/spatial review**: \`codegraph_vr\` first to verify graph size and Git4D linkage. The MCP tool does not start a long-running server; launch the returned \`codegraph vr\` command outside MCP.
 
 ## Anti-patterns
 

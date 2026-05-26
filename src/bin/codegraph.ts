@@ -20,6 +20,7 @@
  *   codegraph callees <symbol>   Find what a function/method calls
  *   codegraph impact <symbol>    Analyze what code is affected by changing a symbol
  *   codegraph affected [files]   Find test files affected by changes
+ *   codegraph vr [path]          Start the WebXR/VR graph viewer
  */
 
 import { Command } from 'commander';
@@ -1185,9 +1186,82 @@ program
         console.error(chalk.cyan('  codegraph_node') + '      - Get symbol details');
         console.error(chalk.cyan('  codegraph_files') + '     - Get project file structure');
         console.error(chalk.cyan('  codegraph_status') + '    - Get index status');
+        console.error(chalk.cyan('  codegraph_vr') + '        - Prepare the VR graph viewer launch command');
       }
     } catch (err) {
       error(`Failed to start server: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+/**
+ * codegraph vr [path]
+ */
+program
+  .command('vr [path]')
+  .description('Start the WebXR/VR graph viewer for Quest 2+, Virtual Desktop, and desktop browsers')
+  .option('--host <host>', 'Host to bind (default: 127.0.0.1, use 0.0.0.0 for LAN headsets)')
+  .option('--quest', 'Bind to 0.0.0.0 and print the LAN URL for Quest/Virtual Desktop access')
+  .option('--port <number>', 'Port to listen on', '8734')
+  .option('--max-nodes <number>', 'Maximum VR graph nodes', '3000')
+  .option('--max-edges <number>', 'Maximum VR graph edges', '8000')
+  .option('--git4d <path>', 'Path to git4d graph JSON (default: git4d-results/kamui4d-graph.json)')
+  .option('--no-git4d', 'Disable git4d graph linking')
+  .option('--tls-cert <path>', 'HTTPS certificate path for standalone headset browsers')
+  .option('--tls-key <path>', 'HTTPS private key path for standalone headset browsers')
+  .action(async (
+    pathArg: string | undefined,
+    options: {
+      host?: string;
+      quest?: boolean;
+      port?: string;
+      maxNodes?: string;
+      maxEdges?: string;
+      git4d?: string | false;
+      tlsCert?: string;
+      tlsKey?: string;
+    },
+  ) => {
+    const projectPath = resolveProjectPath(pathArg);
+
+    try {
+      if (!isInitialized(projectPath)) {
+        error(`CodeGraph not initialized in ${projectPath}`);
+        process.exit(1);
+      }
+
+      const { startVRServer } = await import('../vr');
+      const handle = await startVRServer({
+        projectRoot: projectPath,
+        host: options.quest ? '0.0.0.0' : options.host,
+        port: parseInt(options.port || '8734', 10),
+        maxNodes: parseInt(options.maxNodes || '3000', 10),
+        maxEdges: parseInt(options.maxEdges || '8000', 10),
+        includeGit4D: options.git4d !== false,
+        git4dPath: typeof options.git4d === 'string' ? options.git4d : undefined,
+        tlsCertPath: options.tlsCert,
+        tlsKeyPath: options.tlsKey,
+      });
+
+      success('CodeGraph VR viewer is running');
+      console.log(chalk.cyan('  Local: ') + handle.localUrl);
+      if (handle.lanUrl) {
+        console.log(chalk.cyan('  LAN:   ') + handle.lanUrl);
+      }
+      console.log(chalk.dim('  Press Ctrl+C to stop.'));
+      if (handle.protocol === 'http') {
+        warn('Immersive WebXR requires a secure context. localhost works through Virtual Desktop; standalone Quest browser access may need --tls-cert and --tls-key.');
+      }
+
+      const shutdown = async () => {
+        await handle.close();
+        process.exit(0);
+      };
+      process.once('SIGINT', () => { void shutdown(); });
+      process.once('SIGTERM', () => { void shutdown(); });
+      await new Promise<void>(() => undefined);
+    } catch (err) {
+      error(`Failed to start VR viewer: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });

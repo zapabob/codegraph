@@ -25,6 +25,7 @@ Agents configured by the installer launch this automatically. When a `.codegraph
 | `codegraph_explore` | Return source for several related symbols grouped by file, plus a relationship map, in one call |
 | `codegraph_files` | Get the indexed file structure (faster than filesystem scanning) |
 | `codegraph_status` | Check index health and statistics |
+| `codegraph_vr` | Prepare the WebXR/VR graph viewer launch command and report Git4D linkage |
 
 ## How agents should use it
 
