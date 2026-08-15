@@ -66,7 +66,9 @@ interface Git4DDocument {
 }
 
 export function resolveGit4DPath(projectRoot: string, explicitPath?: string): string {
-  return path.resolve(explicitPath ?? path.join(projectRoot, 'git4d-results', 'kamui4d-graph.json'));
+  return explicitPath
+    ? path.resolve(projectRoot, explicitPath)
+    : path.join(projectRoot, 'git4d-results', 'kamui4d-graph.json');
 }
 
 export function buildVRGraph(cg: CodeGraph, options: BuildVRGraphOptions = {}): VRGraphPayload {
@@ -118,9 +120,17 @@ function buildCodeGraphLayer(
   edges: VRGraphEdge[];
   fileNodeByPath: Map<string, string>;
 } {
-  const rawNodes = cg.getAllNodes();
-  const rawEdges = cg.getAllEdges();
   const files = cg.getFiles();
+  const fileBudget = Math.min(Math.ceil(maxNodes * 0.25), files.length, 750);
+  const symbolBudget = Math.max(0, maxNodes - fileBudget);
+  // Reserve room for the file-to-symbol containment edges before asking SQLite
+  // for semantic edges. The snapshot is bounded before hydration, so a VR
+  // export remains safe for multi-million-node indexes.
+  const relationshipBudget = Math.max(0, maxEdges - symbolBudget);
+  const { nodes: rawNodes, edges: rawEdges } = cg.getVisualizationSnapshot(
+    symbolBudget,
+    relationshipBudget,
+  );
   const degree = new Map<string, number>();
   for (const edge of rawEdges) {
     degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
@@ -130,8 +140,6 @@ function buildCodeGraphLayer(
   const sortedNodes = rawNodes
     .slice()
     .sort((a, b) => scoreNode(b, degree) - scoreNode(a, degree) || a.id.localeCompare(b.id));
-  const fileBudget = Math.min(Math.ceil(maxNodes * 0.25), files.length, 750);
-  const symbolBudget = Math.max(0, maxNodes - fileBudget);
   const selectedSymbols = sortedNodes.slice(0, symbolBudget);
   const selectedFiles = selectFiles(files, selectedSymbols, fileBudget);
   const fileNodeByPath = new Map<string, string>();

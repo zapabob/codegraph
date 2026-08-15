@@ -10,9 +10,21 @@
  *   inotify watch set — that's the entire point of issue #411.
  */
 
-import CodeGraph, { findNearestCodeGraphRoot } from '../index';
+import * as os from 'os';
+import type CodeGraph from '../index';
+import { findNearestCodeGraphRoot } from '../directory';
 import { watchDisabledReason } from '../sync';
 import { ToolHandler } from './tools';
+import { QueryPool, resolvePoolSize } from './query-pool';
+
+// Lazy-load the heavy CodeGraph chain (sqlite + query/graph/context layers) OFF
+// the MCP startup path. It's only needed once a tool actually opens a project —
+// not to answer initialize/tools-list — so deferring it lets `serve --mcp` (and
+// the daemon it spawns) bind + register tools in ~Node-startup time instead of
+// ~800ms, closing the "No such tool available" cold-start race that made headless
+// agents flounder. require() is sync + cached on the CommonJS build.
+const loadCodeGraph = (): typeof import('../index').default =>
+  (require('../index') as typeof import('../index')).default;
 
 export interface MCPEngineOptions {
   /**
@@ -21,6 +33,15 @@ export interface MCPEngineOptions {
    * cheap. Honors {@link watchDisabledReason} regardless.
    */
   watch?: boolean;
+  /**
+   * Whether to off-load read-tool dispatch to a worker-thread pool. Only the
+   * SHARED daemon wants this — it serves many concurrent clients on one event
+   * loop, so without a pool concurrent explores serialize and starve the MCP
+   * transport. Direct mode (one stdio client, no concurrency) leaves it off so a
+   * single call never pays a worker round-trip. `CODEGRAPH_QUERY_POOL_SIZE=0`
+   * disables it even in daemon mode.
+   */
+  queryPool?: boolean;
 }
 
 /**
@@ -41,10 +62,37 @@ export class MCPEngine {
   private watcherStarted = false;
   private opts: Required<MCPEngineOptions>;
   private closed = false;
+  // Off-loop read-tool pool (daemon mode only). Created lazily once the default
+  // project is open — workers each hold their own WAL read connection.
+  private queryPool: QueryPool | null = null;
 
   constructor(opts: MCPEngineOptions = {}) {
-    this.opts = { watch: opts.watch ?? true };
+    this.opts = { watch: opts.watch ?? true, queryPool: opts.queryPool ?? false };
     this.toolHandler = new ToolHandler(null);
+  }
+
+  /**
+   * Start the worker-thread query pool once a default project is open (daemon
+   * mode only; honors `CODEGRAPH_QUERY_POOL_SIZE`). Idempotent and best-effort:
+   * if workers can't spawn on this platform the ToolHandler keeps serving reads
+   * in-process, so the pool can only help, never break, tool calls.
+   */
+  private maybeStartPool(root: string): void {
+    if (!this.opts.queryPool || this.queryPool || this.closed) return;
+    const size = resolvePoolSize(process.env.CODEGRAPH_QUERY_POOL_SIZE, os.cpus().length);
+    if (size <= 0) {
+      process.stderr.write('[CodeGraph MCP] Query pool disabled (CODEGRAPH_QUERY_POOL_SIZE=0); serving reads in-process.\n');
+      return;
+    }
+    try {
+      this.queryPool = new QueryPool({ root, size });
+      this.toolHandler.setQueryPool(this.queryPool);
+      process.stderr.write(`[CodeGraph MCP] Query pool: up to ${size} worker thread(s) for concurrent reads.\n`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[CodeGraph MCP] Query pool unavailable (${msg}); serving reads in-process.\n`);
+      this.queryPool = null;
+    }
   }
 
   /**
@@ -118,11 +166,12 @@ export class MCPEngine {
         try { this.cg.close(); } catch { /* ignore */ }
         this.cg = null;
       }
-      this.cg = CodeGraph.openSync(resolvedRoot);
+      this.cg = loadCodeGraph().openSync(resolvedRoot);
       this.projectPath = resolvedRoot;
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
       this.catchUpSync();
+      this.maybeStartPool(resolvedRoot);
     } catch {
       // Still failing — caller will try again on the next tool call.
     }
@@ -135,6 +184,13 @@ export class MCPEngine {
   stop(): void {
     if (this.closed) return;
     this.closed = true;
+    // Detach + terminate the worker pool first so no tool call routes to a
+    // worker mid-teardown; outstanding pool calls resolve with graceful guidance.
+    this.toolHandler.setQueryPool(null);
+    if (this.queryPool) {
+      void this.queryPool.destroy();
+      this.queryPool = null;
+    }
     this.toolHandler.closeAll();
     if (this.cg) {
       try { this.cg.close(); } catch { /* ignore */ }
@@ -147,18 +203,18 @@ export class MCPEngine {
 
     const resolvedRoot = findNearestCodeGraphRoot(searchFrom);
     if (!resolvedRoot) {
-      // No .codegraph/ above searchFrom — that's not an error, sessions may
-      // still discover one later via roots/list.
+      // No .codegraph/ above searchFrom. Sessions may still discover one later via roots/list
       this.projectPath = searchFrom;
       return;
     }
 
     this.projectPath = resolvedRoot;
     try {
-      this.cg = await CodeGraph.open(resolvedRoot);
+      this.cg = await loadCodeGraph().open(resolvedRoot);
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
       this.catchUpSync();
+      this.maybeStartPool(resolvedRoot);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[CodeGraph MCP] Failed to open project at ${resolvedRoot}: ${msg}\n`);
@@ -207,6 +263,14 @@ export class MCPEngine {
       onSyncError: (err) => {
         process.stderr.write(`[CodeGraph MCP] Auto-sync error: ${err.message}\n`);
       },
+      onDegraded: (reason) => {
+        // Live watching gave up permanently (watch-resource exhaustion or a
+        // write lock held past the retry budget). Say so loudly and ONCE — the
+        // graph will no longer auto-update, so a long-running MCP session must
+        // not keep assuming it's fresh. The reason already names the remedy
+        // (`codegraph sync` / git sync hooks).
+        process.stderr.write(`[CodeGraph MCP] File watcher degraded — ${reason}\n`);
+      },
     });
 
     this.watcherStarted = true;
@@ -222,12 +286,17 @@ export class MCPEngine {
   /**
    * Reconcile the index with the current filesystem once, right after open —
    * catches edits, adds, deletes, and `git pull`/`checkout` changes made while
-   * no watcher was running. Background, never awaited.
+   * no watcher was running. Runs in the background, but the returned promise
+   * is pushed into the ToolHandler as a one-shot gate so the *first* tool
+   * call awaits completion before serving (without this, a tool call that
+   * races past sync returns rows for files that no longer exist on disk —
+   * and the per-file staleness banner can't help because `getPendingFiles()`
+   * is populated by the watcher, not by catch-up).
    */
   private catchUpSync(): void {
     const cg = this.cg;
     if (!cg) return;
-    void cg
+    const p = cg
       .sync()
       .then((result) => {
         const changed = result.filesAdded + result.filesModified + result.filesRemoved;
@@ -239,6 +308,7 @@ export class MCPEngine {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[CodeGraph MCP] Catch-up sync failed: ${msg}\n`);
       });
+    this.toolHandler.setCatchUpGate(p);
   }
 }
 

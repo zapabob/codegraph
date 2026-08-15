@@ -20,8 +20,14 @@ function fakeCodeGraph(root: string, nodes: Node[], edges: Edge[], files: FileRe
   return {
     getProjectRoot: () => root,
     getStats: () => stats,
-    getAllNodes: () => nodes,
-    getAllEdges: () => edges,
+    getVisualizationSnapshot: (nodeLimit: number, edgeLimit: number) => ({
+      nodes: nodes.slice(0, nodeLimit),
+      edges: edges.slice(0, edgeLimit),
+    }),
+    // These throw if a future refactor puts whole-index hydration back into
+    // the exporter rather than using the bounded visualization snapshot.
+    getAllNodes: () => { throw new Error('VR export must not read all nodes'); },
+    getAllEdges: () => { throw new Error('VR export must not read all edges'); },
     getFiles: () => files,
   } as unknown as CodeGraph;
 }

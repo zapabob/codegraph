@@ -72,6 +72,19 @@ function send(child: ChildProcessWithoutNullStreams, msg: object): void {
   child.stdin.write(JSON.stringify(msg) + '\n');
 }
 
+async function stopChild(child: ChildProcessWithoutNullStreams | null): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  if (!child.killed) {
+    try { child.kill('SIGKILL'); } catch { /* process exited during cleanup */ }
+  }
+  await Promise.race([
+    closed,
+    new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+  ]);
+}
+
 const CLIENT_INFO = { name: 'test', version: '0.0.0' };
 
 describe('MCP project resolution via roots/list (issue #196)', () => {
@@ -84,11 +97,9 @@ describe('MCP project resolution via roots/list (issue #196)', () => {
     projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-mcp-proj-'));
   });
 
-  afterEach(() => {
-    if (child && !child.killed) {
-      child.kill('SIGKILL');
-      child = null;
-    }
+  afterEach(async () => {
+    await stopChild(child);
+    child = null;
     fs.rmSync(cwdDir, { recursive: true, force: true });
     fs.rmSync(projectDir, { recursive: true, force: true });
   });

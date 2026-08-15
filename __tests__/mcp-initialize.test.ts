@@ -99,6 +99,19 @@ function waitFor<T>(
   });
 }
 
+async function stopChild(child: ChildProcessWithoutNullStreams | null): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  if (!child.killed) {
+    try { child.kill('SIGKILL'); } catch { /* process exited during cleanup */ }
+  }
+  await Promise.race([
+    closed,
+    new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+  ]);
+}
+
 describe('MCP initialize handshake (issue #172)', () => {
   let tempDir: string;
   let child: ChildProcessWithoutNullStreams | null = null;
@@ -107,11 +120,9 @@ describe('MCP initialize handshake (issue #172)', () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-mcp-init-'));
   });
 
-  afterEach(() => {
-    if (child && !child.killed) {
-      child.kill('SIGKILL');
-      child = null;
-    }
+  afterEach(async () => {
+    await stopChild(child);
+    child = null;
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -154,4 +165,30 @@ describe('MCP initialize handshake (issue #172)', () => {
     expect(json.id).toBe(0);
     expect(json.result.serverInfo.name).toBe('codegraph');
   }, 20000);
+
+  it('answers resources/list and prompts/list with empty lists, not -32601 (issue #621)', async () => {
+    child = spawnServer(tempDir);
+    const events = tagStreams(child);
+    sendInitialize(child, tempDir);
+    await waitFor(events, (e) => e.stream === 'stdout', 5000); // initialize reply
+
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/list', params: {} }) + '\n');
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }) + '\n');
+
+    const replyFor = async (id: number) => {
+      const ev = await waitFor(events, (e) => {
+        if (e.stream !== 'stdout') return false;
+        try { return JSON.parse(e.text).id === id; } catch { return false; }
+      }, 5000);
+      return JSON.parse(ev.text);
+    };
+
+    const resources = await replyFor(1);
+    expect(resources.error).toBeUndefined();
+    expect(resources.result.resources).toEqual([]);
+
+    const prompts = await replyFor(2);
+    expect(prompts.error).toBeUndefined();
+    expect(prompts.result.prompts).toEqual([]);
+  }, 15000);
 });
