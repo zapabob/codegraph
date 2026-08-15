@@ -77,6 +77,7 @@ describe('VR graph export', () => {
       });
 
       expect(graph.schema).toBe('codegraph.vr.v1');
+      expect(graph.compatibility.webxrSessionModes).toEqual(['immersive-vr', 'immersive-ar']);
       expect(graph.git4d.loaded).toBe(true);
       expect(graph.git4d.bridgeCount).toBe(1);
       expect(graph.edges.some((edge) => edge.kind === 'git4d_link')).toBe(true);

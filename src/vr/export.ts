@@ -100,6 +100,7 @@ export function buildVRGraph(cg: CodeGraph, options: BuildVRGraphOptions = {}): 
     compatibility: {
       renderer: 'webgl-webxr',
       webxrSessionMode: 'immersive-vr',
+      webxrSessionModes: ['immersive-vr', 'immersive-ar'],
       quest: 'quest2-plus',
       virtualDesktop: true,
       secureContextRequiredForImmersiveVR: true,

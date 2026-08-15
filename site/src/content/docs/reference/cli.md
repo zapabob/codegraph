@@ -20,7 +20,7 @@ codegraph files [path]            # Show file structure (--format, --filter, --p
 codegraph callers <symbol>        # Find what calls a function/method (--limit, --json)
 codegraph callees <symbol>        # Find what a function/method calls (--limit, --json)
 codegraph impact <symbol>         # Analyze what code is affected by changing a symbol (--depth, --json)
-codegraph vr [path]               # Start WebXR/VR graph viewer (--quest, --git4d, --tls-cert/--tls-key)
+codegraph vr [path]               # Start WebXR/VR graph viewer or write a static bundle (--quest, --export, --git4d)
 codegraph affected [files...]     # Find test files affected by changes (see below)
 codegraph daemon                  # Manage background daemons — pick one to stop (alias: daemons)
 codegraph telemetry [on|off]      # Show or change anonymous usage telemetry
@@ -53,12 +53,13 @@ Traces import dependencies transitively to find which test files are affected by
 
 ## vr
 
-Starts a local WebGL/WebXR graph viewer for desktop browsers, Quest 2+ headsets, and Virtual Desktop workflows. It reads the CodeGraph index and links `git4d-results/kamui4d-graph.json` when present.
+Starts a local WebGL/WebXR graph viewer for desktop browsers, Quest 2+ headsets, and Virtual Desktop workflows. It reads the CodeGraph index and links `git4d-results/kamui4d-graph.json` when present. On a browser that reports `immersive-ar`, the viewer also offers an AR session; otherwise the desktop view remains available.
 
 ```bash
 codegraph vr . --quest
 codegraph vr . --host 127.0.0.1 --port 8734
 codegraph vr . --git4d git4d-results/kamui4d-graph.json
+codegraph vr . --export site/public/vr --label codegraph --no-git4d
 ```
 
-`--quest` binds to `0.0.0.0` and prints a LAN URL. Immersive WebXR requires a secure context; `localhost` is suitable through Virtual Desktop, while standalone headset browsers may need `--tls-cert` and `--tls-key`.
+`--quest` binds to `0.0.0.0` and prints a LAN URL. `--export` writes `index.html`, `style.css`, `client.js`, and a bounded `graph.json` so a static host such as GitHub Pages can serve the same viewer; it strips the local project root and Git4D diagnostic paths, and `--label` supplies the public project name. Immersive WebXR requires a secure context; `localhost` is suitable through Virtual Desktop, while standalone headset browsers may need `--tls-cert` and `--tls-key`.

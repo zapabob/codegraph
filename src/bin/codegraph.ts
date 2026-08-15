@@ -1815,6 +1815,8 @@ program
   .option('--max-edges <number>', 'Maximum VR graph edges', '8000')
   .option('--git4d <path>', 'Path to git4d graph JSON (default: git4d-results/kamui4d-graph.json)')
   .option('--no-git4d', 'Disable git4d graph linking')
+  .option('--export <directory>', 'Write a self-contained static viewer bundle instead of starting a server')
+  .option('--label <label>', 'Public project label in a static viewer bundle')
   .option('--tls-cert <path>', 'HTTPS certificate path for standalone headset browsers')
   .option('--tls-key <path>', 'HTTPS private key path for standalone headset browsers')
   .action(async (
@@ -1826,6 +1828,8 @@ program
       maxNodes?: string;
       maxEdges?: string;
       git4d?: string | false;
+      export?: string;
+      label?: string;
       tlsCert?: string;
       tlsKey?: string;
     },
@@ -1838,7 +1842,22 @@ program
         process.exit(1);
       }
 
-      const { startVRServer } = await import('../vr');
+      const { startVRServer, writeVRStaticExport } = await import('../vr');
+      if (options.export) {
+        const exported = writeVRStaticExport({
+          projectRoot: projectPath,
+          outputDir: path.resolve(options.export),
+          maxNodes: parseInt(options.maxNodes || '3000', 10),
+          maxEdges: parseInt(options.maxEdges || '8000', 10),
+          includeGit4D: options.git4d !== false,
+          git4dPath: typeof options.git4d === 'string' ? options.git4d : undefined,
+          projectLabel: options.label,
+        });
+        success('CodeGraph static VR/AR viewer exported');
+        console.log(chalk.cyan('  Viewer: ') + exported.entrypoint);
+        console.log(chalk.cyan('  Graph:  ') + `${exported.nodeCount} nodes, ${exported.edgeCount} edges`);
+        return;
+      }
       const handle = await startVRServer({
         projectRoot: projectPath,
         host: options.quest ? '0.0.0.0' : options.host,

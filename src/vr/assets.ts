@@ -3,18 +3,19 @@ export const VR_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CodeGraph VR</title>
-  <link rel="stylesheet" href="/style.css">
+  <title>CodeGraph Spatial Viewer</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <canvas id="scene" aria-label="CodeGraph VR graph"></canvas>
   <div id="hud">
-    <strong>CodeGraph VR</strong>
+    <strong>CodeGraph Spatial Viewer</strong>
     <span id="stats">Loading graph...</span>
     <button id="vrButton" disabled>Enter VR</button>
+    <button id="arButton" disabled>Enter AR</button>
   </div>
   <div id="toast"></div>
-  <script src="/client.js"></script>
+  <script src="client.js"></script>
 </body>
 </html>
 `;
@@ -56,7 +57,8 @@ html, body {
   color: #aac2cf;
 }
 
-#vrButton {
+#vrButton,
+#arButton {
   border: 1px solid rgba(238, 244, 248, 0.22);
   color: #101418;
   background: #8fe0b0;
@@ -66,7 +68,8 @@ html, body {
   padding: 7px 10px;
 }
 
-#vrButton:disabled {
+#vrButton:disabled,
+#arButton:disabled {
   color: #73818a;
   background: #26313a;
 }
@@ -101,8 +104,9 @@ export const VR_CLIENT_JS = `
   var canvas = document.getElementById('scene');
   var statsEl = document.getElementById('stats');
   var vrButton = document.getElementById('vrButton');
+  var arButton = document.getElementById('arButton');
   var toast = document.getElementById('toast');
-  var gl = canvas.getContext('webgl', { antialias: true, xrCompatible: true });
+  var gl = canvas.getContext('webgl', { antialias: true, alpha: true, xrCompatible: true });
   var graph = null;
   var nodeBuffer = null;
   var nodeColorBuffer = null;
@@ -122,6 +126,7 @@ export const VR_CLIENT_JS = `
   var lastY = 0;
   var xrSession = null;
   var xrRefSpace = null;
+  var xrMode = null;
 
   if (!gl) {
     statsEl.textContent = 'WebGL is unavailable in this browser.';
@@ -292,9 +297,12 @@ export const VR_CLIENT_JS = `
     if (!pose) return;
     var layer = xrSession.renderState.baseLayer;
     gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
-    gl.clearColor(0.063, 0.078, 0.094, 1);
+    var transparent = xrMode === 'immersive-ar';
+    gl.clearColor(transparent ? 0 : 0.063, transparent ? 0 : 0.078, transparent ? 0 : 0.094, transparent ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    var model = multiply(translate(0, 1.35, -3.2), multiply(rotateX(-0.18), rotateY(Date.now() * 0.00008)));
+    var distance = transparent ? -1.45 : -3.2;
+    var height = transparent ? 0 : 1.35;
+    var model = multiply(translate(0, height, distance), multiply(rotateX(-0.18), rotateY(Date.now() * 0.00008)));
     pose.views.forEach(function (view) {
       var viewport = layer.getViewport(view);
       gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
@@ -388,41 +396,58 @@ export const VR_CLIENT_JS = `
 
   async function setupXR() {
     if (!navigator.xr || !window.isSecureContext) {
-      showToast('Immersive VR needs WebXR in a secure context. localhost works through Virtual Desktop; standalone Quest browser usually needs HTTPS.');
+      showToast('WebXR needs a secure context. Desktop view is available here; localhost works through Virtual Desktop, and public Pages is HTTPS.');
       return;
     }
+    var supportedAny = false;
     try {
-      var supported = await navigator.xr.isSessionSupported('immersive-vr');
-      if (!supported) {
-        showToast('This browser did not report immersive-vr support. Desktop view is still available.');
-        return;
+      var vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
+      if (vrSupported) {
+        supportedAny = true;
+        vrButton.disabled = false;
+        vrButton.addEventListener('click', function () { enterXR('immersive-vr'); });
       }
-      vrButton.disabled = false;
-      vrButton.addEventListener('click', enterVR);
     } catch (err) {
-      showToast('WebXR support check failed: ' + (err && err.message ? err.message : String(err)));
+      showToast('VR support check failed: ' + (err && err.message ? err.message : String(err)));
     }
+    try {
+      var arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (arSupported) {
+        supportedAny = true;
+        arButton.disabled = false;
+        arButton.addEventListener('click', function () { enterXR('immersive-ar'); });
+      }
+    } catch (err) {
+      showToast('AR support check failed: ' + (err && err.message ? err.message : String(err)));
+    }
+    if (!supportedAny) showToast('This browser did not report immersive VR or AR support. Desktop view is still available.');
   }
 
-  async function enterVR() {
+  async function enterXR(mode) {
     if (xrSession) return;
     try {
-      xrSession = await navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'bounded-floor']
-      });
+      var sessionOptions = mode === 'immersive-vr'
+        ? { optionalFeatures: ['local-floor', 'bounded-floor'] }
+        : { requiredFeatures: ['local'], optionalFeatures: ['dom-overlay'], domOverlay: { root: document.body } };
+      xrSession = await navigator.xr.requestSession(mode, sessionOptions);
+      xrMode = mode;
       await gl.makeXRCompatible();
-      xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl) });
-      xrRefSpace = await xrSession.requestReferenceSpace('local-floor')
-        .catch(function () { return xrSession.requestReferenceSpace('local'); });
+      xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl, { alpha: mode === 'immersive-ar' }) });
+      xrRefSpace = mode === 'immersive-vr'
+        ? await xrSession.requestReferenceSpace('local-floor').catch(function () { return xrSession.requestReferenceSpace('local'); })
+        : await xrSession.requestReferenceSpace('local');
       xrSession.addEventListener('end', function () {
         xrSession = null;
         xrRefSpace = null;
+        xrMode = null;
         window.requestAnimationFrame(renderDesktop);
       });
       xrSession.requestAnimationFrame(renderXR);
     } catch (err) {
       xrSession = null;
-      showToast('Could not enter VR: ' + (err && err.message ? err.message : String(err)));
+      xrRefSpace = null;
+      xrMode = null;
+      showToast('Could not enter ' + (mode === 'immersive-ar' ? 'AR' : 'VR') + ': ' + (err && err.message ? err.message : String(err)));
     }
   }
 
@@ -430,7 +455,7 @@ export const VR_CLIENT_JS = `
     try {
       initProgram();
       wireInput();
-      var response = await fetch('/graph.json', { cache: 'no-store' });
+      var response = await fetch('graph.json', { cache: 'no-store' });
       if (!response.ok) throw new Error('graph.json returned ' + response.status);
       graph = await response.json();
       buildBuffers();

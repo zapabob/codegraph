@@ -47,6 +47,7 @@ export interface VRGraphPayload {
   compatibility: {
     renderer: 'webgl-webxr';
     webxrSessionMode: 'immersive-vr';
+    webxrSessionModes: Array<'immersive-vr' | 'immersive-ar'>;
     quest: 'quest2-plus';
     virtualDesktop: true;
     secureContextRequiredForImmersiveVR: true;

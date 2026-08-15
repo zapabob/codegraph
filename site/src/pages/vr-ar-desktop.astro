@@ -1,0 +1,379 @@
+---
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+type GraphStats = {
+	fileCount?: number;
+	nodeCount?: number;
+	edgeCount?: number;
+};
+
+type StaticGraph = {
+	generatedAt?: number | string;
+	nodes?: unknown[];
+	edges?: unknown[];
+	stats?: GraphStats;
+	limits?: {
+		maxNodes?: number;
+		maxEdges?: number;
+	};
+	compatibility?: {
+		webxrSessionModes?: string[];
+	};
+};
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const repository = 'https://github.com/zapabob/codegraph';
+const firstExistingPath = (candidates: string[]) => {
+	const match = candidates.map((candidate) => resolve(process.cwd(), candidate)).find(existsSync);
+	if (!match) {
+		throw new Error('The generated spatial graph bundle is missing from site/public/vr.');
+	}
+	return match;
+};
+const packageJson = JSON.parse(
+	readFileSync(firstExistingPath(['../package.json', 'package.json']), 'utf8'),
+) as { version?: string };
+const releaseVersion = packageJson.version || 'current';
+const graph = JSON.parse(
+	readFileSync(firstExistingPath(['public/vr/graph.json', 'site/public/vr/graph.json']), 'utf8'),
+) as StaticGraph;
+const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
+const sourceFiles = graph.stats?.fileCount || 0;
+const sourceNodes = graph.stats?.nodeCount || 0;
+const sourceEdges = graph.stats?.edgeCount || 0;
+const viewerNodes = graph.nodes?.length || 0;
+const viewerEdges = graph.edges?.length || 0;
+const maxNodes = graph.limits?.maxNodes || viewerNodes;
+const maxEdges = graph.limits?.maxEdges || viewerEdges;
+const generatedAt = graph.generatedAt ? new Date(graph.generatedAt) : undefined;
+const generatedLabel = generatedAt
+	? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(generatedAt)
+	: 'build time';
+const modes = graph.compatibility?.webxrSessionModes || ['immersive-vr', 'immersive-ar'];
+const supportsAR = modes.includes('immersive-ar');
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<meta
+			name="description"
+			content="A self-indexed CodeGraph release viewer for desktop WebGL, progressive WebXR VR, and browser-supported AR."
+		/>
+		<title>CodeGraph Spatial Desktop — v{releaseVersion}</title>
+	</head>
+	<body>
+		<main>
+			<section class="hero shell">
+				<header class="nav">
+					<a class="wordmark" href={base + '/'} aria-label="CodeGraph home">codegraph<span>.</span></a>
+					<nav aria-label="Page navigation">
+						<a href={base + '/getting-started/introduction'}>Docs</a>
+						<a href={base + '/reference/cli'}>CLI</a>
+						<a href={repository}>Source</a>
+					</nav>
+				</header>
+
+				<div class="hero-grid">
+					<div class="hero-copy">
+						<p class="eyebrow">SPATIAL DESKTOP RELEASE · V{releaseVersion}</p>
+						<h1>Read the repository<br /><em>in its connections.</em></h1>
+						<p class="lede">
+							This release publishes a bounded, self-indexed graph of CodeGraph itself. Start with
+							a precise desktop WebGL view, then enter immersive VR or AR only when the browser and
+							hardware report support.
+						</p>
+						<div class="actions">
+							<a class="button primary" href={base + '/vr/'}>Open the live graph <span aria-hidden="true">↗</span></a>
+							<a class="button quiet" href={repository + '/releases/tag/v' + releaseVersion}>Release notes</a>
+						</div>
+						<div class="trust-row">
+							<span>SELF-INDEXED</span>
+							<span>LOCAL PATHS REDACTED</span>
+							<span>STATIC GITHUB PAGES</span>
+						</div>
+					</div>
+
+					<figure class="hero-art">
+						<img
+							src={base + '/images/codegraph-spatial-hero.webp'}
+							alt="Abstract spatial graph rendered as luminous nodes and connecting threads"
+							width="1536"
+							height="1024"
+							fetchpriority="high"
+						/>
+						<figcaption>GPTImage2 visual concept · the live viewer below uses the actual repository graph</figcaption>
+					</figure>
+				</div>
+			</section>
+
+			<section class="proof shell" aria-labelledby="proof-title">
+				<div class="section-heading">
+					<p class="eyebrow">THE BUILD ARTIFACT</p>
+					<h2 id="proof-title">One graph, two honest scales.</h2>
+					<p>
+						The repository index remains available as project statistics. The public viewer is deliberately
+						bounded so a browser can open it smoothly without publishing a local checkout.
+					</p>
+				</div>
+				<div class="metric-grid">
+					<article class="metric source">
+						<p>Source index</p>
+						<strong>{formatNumber(sourceFiles)}</strong>
+						<span>files indexed</span>
+						<div class="rule"></div>
+						<small>{formatNumber(sourceNodes)} nodes · {formatNumber(sourceEdges)} edges</small>
+					</article>
+					<article class="metric viewer">
+						<p>Public spatial view</p>
+						<strong>{formatNumber(viewerNodes)}</strong>
+						<span>nodes rendered</span>
+						<div class="rule"></div>
+						<small>{formatNumber(viewerEdges)} edges · capped at {formatNumber(maxNodes)} / {formatNumber(maxEdges)}</small>
+					</article>
+					<article class="metric release">
+						<p>Snapshot export</p>
+						<strong>VR / AR</strong>
+						<span>progressive WebXR modes</span>
+						<div class="rule"></div>
+						<small>generated {generatedLabel}</small>
+					</article>
+				</div>
+			</section>
+
+			<section class="experience">
+				<div class="shell experience-grid">
+					<figure class="self-graph">
+						<img
+							src={base + '/images/codegraph-self-graph.webp'}
+							alt="Abstract desktop display showing connected code graph clusters"
+							width="1536"
+							height="1024"
+							loading="lazy"
+						/>
+						<figcaption>GPTImage2 visual concept</figcaption>
+					</figure>
+					<div class="experience-copy">
+						<p class="eyebrow">DESKTOP IS THE BASELINE</p>
+						<h2>Open the graph before you put on a headset.</h2>
+						<p>
+							The live bundle is a standard static page. Its WebGL canvas, navigation, search, and
+							selection work on a normal desktop browser. Immersive controls appear only after WebXR
+							capability checks, so a missing headset never blocks the primary view.
+						</p>
+						<dl class="capabilities">
+							<div>
+								<dt>01</dt>
+								<dd><strong>Desktop WebGL</strong><span>Available wherever the static viewer can render.</span></dd>
+							</div>
+							<div>
+								<dt>02</dt>
+								<dd><strong>Immersive VR</strong><span>Enabled when the browser reports immersive-vr support.</span></dd>
+							</div>
+							<div>
+								<dt>03</dt>
+								<dd><strong>Browser-supported AR</strong><span>{supportsAR ? 'The bundle asks for immersive-ar only on compatible devices.' : 'AR remains feature-detected at runtime.'}</span></dd>
+							</div>
+						</dl>
+						<a class="text-link" href={base + '/vr/'}>Explore the WebGL viewer <span aria-hidden="true">→</span></a>
+					</div>
+				</div>
+			</section>
+
+			<section class="export shell" aria-labelledby="export-title">
+				<div class="section-heading compact">
+					<p class="eyebrow">THE PORTABLE EXPORT</p>
+					<h2 id="export-title">The release is built from a reproducible command.</h2>
+					<p>
+						CodeGraph writes the same viewer shell and a bounded graph JSON bundle. The export has no
+						dependency on a running local server, which keeps the GitHub Pages release portable.
+					</p>
+				</div>
+				<div class="command-layout">
+					<div class="terminal" aria-label="Static export command">
+						<div class="terminal-head"><span></span><span></span><span></span><b>static export</b></div>
+						<code><i>$</i> codegraph vr . --export site/public/vr<br />&nbsp;&nbsp;--label codegraph --no-git4d</code>
+						<p><span>✓</span> viewer written · graph bounded · local diagnostics removed</p>
+					</div>
+					<div class="privacy-card">
+						<p class="eyebrow">PUBLIC-SAFE BY DESIGN</p>
+						<ul>
+							<li><span>01</span>Local project roots are replaced with the public label.</li>
+							<li><span>02</span>Git4D diagnostic paths and errors are reduced before export.</li>
+							<li><span>03</span>The viewer receives a bounded graph snapshot, not a local database.</li>
+						</ul>
+						<a href={base + '/vr/graph.json'}>Inspect the released graph JSON <span aria-hidden="true">↗</span></a>
+					</div>
+				</div>
+			</section>
+
+			<section class="bridge">
+				<div class="shell bridge-grid">
+					<div class="bridge-copy">
+						<p class="eyebrow">A CONTINUOUS SURFACE</p>
+						<h2>Desktop first.<br />Space when it is useful.</h2>
+						<p>
+							The desktop view and WebXR session render the same graph payload. This keeps the interaction
+							model stable while allowing a spatial view for large relationship clusters and architecture
+							orientation.
+						</p>
+						<div class="route" aria-label="Release flow">
+							<span>INDEX</span><b>→</b><span>BOUND</span><b>→</b><span>DESKTOP</span><b>→</b><span>XR</span>
+						</div>
+					</div>
+					<figure class="bridge-art">
+						<img
+							src={base + '/images/codegraph-desktop-xr-bridge.webp'}
+							alt="Abstract transition from a desktop workspace into a spatial frame"
+							width="1536"
+							height="1024"
+							loading="lazy"
+						/>
+						<figcaption>GPTImage2 visual concept</figcaption>
+					</figure>
+				</div>
+			</section>
+
+			<section class="launch shell">
+				<p class="eyebrow">READY TO INSPECT</p>
+				<h2>Trace a real repository<br />through its relationships.</h2>
+				<div class="actions centered">
+					<a class="button primary" href={base + '/vr/'}>Launch spatial desktop <span aria-hidden="true">↗</span></a>
+					<a class="button quiet" href={base + '/reference/cli'}>Read the CLI reference</a>
+				</div>
+				<p class="fine-print">
+					VR and AR are progressive capabilities: the live page enables only the modes the active browser
+					reports. Desktop WebGL remains the supported starting point.
+				</p>
+			</section>
+		</main>
+		<footer class="footer shell">
+			<a class="wordmark" href={base + '/'}>codegraph<span>.</span></a>
+			<p>Spatial Desktop · v{releaseVersion} · public self-graph snapshot</p>
+			<a href={repository}>github.com/zapabob/codegraph</a>
+		</footer>
+	</body>
+</html>
+
+<style>
+	:global(*) { box-sizing: border-box; }
+	:global(html) { background: #080b10; }
+	:global(body) {
+		margin: 0;
+		min-width: 320px;
+		color: #e9eff7;
+		background:
+			radial-gradient(circle at 80% 5%, rgba(44, 104, 139, 0.16), transparent 24rem),
+			#080b10;
+		font-family: 'Archivo Variable', Archivo, ui-sans-serif, system-ui, sans-serif;
+	}
+	:global(a) { color: inherit; text-decoration: none; }
+	.shell { width: min(1160px, calc(100% - 48px)); margin: 0 auto; }
+	.hero { min-height: 760px; padding: 28px 0 70px; }
+	.nav { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+	.wordmark { color: #f8fafc; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 1.06rem; font-weight: 600; letter-spacing: -0.08em; }
+	.wordmark span { color: #e99b42; }
+	.nav nav { display: flex; align-items: center; gap: 22px; color: #9eabbc; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .69rem; text-transform: uppercase; letter-spacing: .08em; }
+	.nav nav a:hover, .footer a:hover, .text-link:hover, .privacy-card a:hover { color: #f0ad59; }
+	.hero-grid { display: grid; grid-template-columns: minmax(0, .94fr) minmax(380px, 1.06fr); align-items: center; gap: 42px; padding-top: 86px; }
+	.eyebrow { margin: 0 0 15px; color: #e99b42; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .68rem; font-weight: 600; letter-spacing: .135em; line-height: 1.45; }
+	h1, h2, p { margin-top: 0; }
+	h1 { max-width: 650px; margin-bottom: 24px; color: #f3f7fa; font-size: clamp(3.25rem, 6vw, 5.65rem); font-weight: 560; letter-spacing: -.072em; line-height: .94; }
+	h1 em { color: #9dcce5; font-family: Georgia, serif; font-size: .91em; font-weight: 400; letter-spacing: -.05em; }
+	h2 { color: #f1f5f9; font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 540; letter-spacing: -.055em; line-height: .98; }
+	.lede, .section-heading > p:not(.eyebrow), .experience-copy > p, .bridge-copy > p { max-width: 590px; color: #b2c0ce; font-size: 1.07rem; line-height: 1.72; }
+	.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 35px; }
+	.button { display: inline-flex; align-items: center; justify-content: center; min-height: 47px; padding: 0 19px; border: 1px solid transparent; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .72rem; font-weight: 600; letter-spacing: .035em; }
+	.button span { margin-left: 16px; font-size: 1rem; }
+	.primary { color: #071014; background: #a8d9ee; box-shadow: 4px 4px 0 #244758; }
+	.primary:hover { background: #c3e7f5; transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #244758; }
+	.quiet { color: #d9e5ed; border-color: #33424f; }
+	.quiet:hover { border-color: #e99b42; color: #f5b967; }
+	.trust-row { display: flex; flex-wrap: wrap; gap: 10px 17px; color: #718091; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .62rem; letter-spacing: .08em; }
+	.trust-row span::before { content: '◆'; margin-right: 6px; color: #5497b6; font-size: .48rem; }
+	.hero-art, .self-graph, .bridge-art { position: relative; margin: 0; overflow: hidden; background: #101820; }
+	.hero-art { border: 1px solid #263a47; box-shadow: 18px 20px 0 rgba(22, 43, 57, .6); }
+	.hero-art::after, .self-graph::after, .bridge-art::after { position: absolute; inset: 0; content: ''; pointer-events: none; background: linear-gradient(145deg, rgba(151, 220, 244, .08), transparent 44%, rgba(233, 155, 66, .1)); mix-blend-mode: screen; }
+	.hero-art img, .self-graph img, .bridge-art img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
+	figcaption { position: absolute; right: 12px; bottom: 10px; z-index: 1; color: #d6e4ed; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .53rem; letter-spacing: .04em; opacity: .78; }
+	.proof { padding: 108px 0; }
+	.section-heading { max-width: 750px; }
+	.section-heading > p:not(.eyebrow) { max-width: 665px; }
+	.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 42px; }
+	.metric { min-height: 238px; padding: 25px; border: 1px solid #233541; background: linear-gradient(148deg, #111b23, #0c1117); }
+	.metric p { margin-bottom: 26px; color: #8495a5; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .65rem; letter-spacing: .08em; text-transform: uppercase; }
+	.metric strong { display: block; color: #f4f8fb; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: clamp(1.8rem, 3.7vw, 3rem); font-weight: 500; letter-spacing: -.07em; line-height: 1; }
+	.metric.release strong { font-size: clamp(1.55rem, 3vw, 2.35rem); letter-spacing: -.08em; }
+	.metric > span { display: block; margin-top: 8px; color: #9eafbd; font-size: .83rem; }
+	.metric .rule { height: 1px; margin: 30px 0 12px; background: #294252; }
+	.metric small { color: #728495; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .61rem; line-height: 1.45; }
+	.metric.source { border-top: 2px solid #85bdcf; }
+	.metric.viewer { border-top: 2px solid #e99b42; }
+	.metric.release { border-top: 2px solid #8d77c8; }
+	.experience { overflow: hidden; padding: 108px 0; border-top: 1px solid #152833; border-bottom: 1px solid #152833; background: #0b1117; }
+	.experience-grid, .bridge-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .93fr); align-items: center; gap: 76px; }
+	.self-graph { border: 1px solid #273e4e; box-shadow: -14px 16px 0 #172a37; }
+	.experience-copy h2 { max-width: 530px; margin-bottom: 25px; }
+	.capabilities { margin: 32px 0 24px; border-top: 1px solid #314958; }
+	.capabilities div { display: grid; grid-template-columns: 38px 1fr; gap: 12px; padding: 13px 0; border-bottom: 1px solid #243944; }
+	.capabilities dt { color: #e99b42; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .67rem; }
+	.capabilities dd { display: grid; gap: 4px; margin: 0; }
+	.capabilities strong { color: #dcebf3; font-size: .9rem; font-weight: 570; }
+	.capabilities span { color: #8fa2b2; font-size: .82rem; line-height: 1.42; }
+	.text-link, .privacy-card a { color: #abd9ec; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .72rem; letter-spacing: .02em; }
+	.text-link span, .privacy-card a span { margin-left: 10px; color: #e99b42; }
+	.export { padding: 113px 0; }
+	.compact { max-width: 665px; }
+	.command-layout { display: grid; grid-template-columns: minmax(0, 1.14fr) minmax(280px, .86fr); gap: 15px; margin-top: 43px; }
+	.terminal { min-height: 252px; overflow: hidden; border: 1px solid #314855; background: #081015; }
+	.terminal-head { display: flex; align-items: center; height: 36px; padding: 0 13px; border-bottom: 1px solid #233a47; background: #101b22; color: #8c9fad; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+	.terminal-head span { width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #4c6170; }
+	.terminal-head span:nth-child(2) { background: #ca9b56; }
+	.terminal-head span:nth-child(3) { background: #7aa2a0; }
+	.terminal-head b { margin-left: 8px; font-weight: 500; }
+	.terminal code { display: block; padding: 36px 26px 28px; color: #c0e6f4; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: clamp(.7rem, 1.5vw, .92rem); line-height: 1.72; white-space: nowrap; }
+	.terminal code i { color: #e99b42; font-style: normal; }
+	.terminal p { margin: 0 26px; color: #8397a7; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .63rem; }
+	.terminal p span { color: #9ccf87; }
+	.privacy-card { min-height: 252px; padding: 25px; border: 1px solid #2b384b; background: #16162a; }
+	.privacy-card ul { display: grid; gap: 14px; margin: 20px 0 22px; padding: 0; list-style: none; color: #b8becf; font-size: .84rem; line-height: 1.45; }
+	.privacy-card li { display: grid; grid-template-columns: 23px 1fr; gap: 10px; }
+	.privacy-card li span { color: #cdb7ff; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .6rem; }
+	.bridge { padding: 106px 0; background: linear-gradient(107deg, #12303c, #0b1721 60%, #16142b); }
+	.bridge-copy h2 { margin-bottom: 23px; }
+	.route { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 32px; color: #d2e4ed; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .63rem; letter-spacing: .06em; }
+	.route b { color: #e99b42; font-size: .85rem; }
+	.bridge-art { border: 1px solid #396072; box-shadow: 15px 15px 0 rgba(3, 14, 22, .35); }
+	.launch { padding: 125px 0 114px; text-align: center; }
+	.launch h2 { max-width: 700px; margin: 0 auto; }
+	.centered { justify-content: center; }
+	.fine-print { max-width: 570px; margin: 4px auto 0; color: #7f91a0; font-size: .76rem; line-height: 1.6; }
+	.footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 25px 0 34px; border-top: 1px solid #20323d; color: #778896; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: .62rem; }
+	.footer p { margin: 0; }
+	.footer > a:last-child { color: #a7bac6; }
+	@media (max-width: 820px) {
+		.hero { min-height: auto; padding-bottom: 76px; }
+		.hero-grid, .experience-grid, .bridge-grid, .command-layout { grid-template-columns: 1fr; }
+		.hero-grid { padding-top: 65px; }
+		.hero-art { max-width: 680px; }
+		.experience-grid, .bridge-grid { gap: 48px; }
+		.metric-grid { grid-template-columns: 1fr; }
+		.metric { min-height: 188px; }
+		.self-graph { order: 2; }
+		.experience-copy { order: 1; }
+	}
+	@media (max-width: 560px) {
+		.shell { width: min(100% - 32px, 1160px); }
+		.nav nav { gap: 12px; font-size: .57rem; }
+		.nav nav a:nth-child(2) { display: none; }
+		.hero-grid { gap: 36px; padding-top: 54px; }
+		h1 { font-size: clamp(3rem, 16vw, 4.6rem); }
+		.proof, .experience, .export, .bridge, .launch { padding: 78px 0; }
+		.terminal code { padding: 29px 18px 23px; font-size: .63rem; }
+		.terminal p { margin: 0 18px; }
+		.footer { align-items: flex-start; flex-direction: column; }
+	}
+</style>
