@@ -88,8 +88,9 @@ jobs:
           # by the admin makes the push go through cleanly. Set the
           # RELEASE_PAT secret with: contents:write on this repo, no other
           # scopes. Rotate per your token policy; the workflow only runs
-          # on manual dispatch so the blast radius is small.
-          token: ${{ secrets.RELEASE_PAT }}
+          # on manual dispatch so the blast radius is small. Forks that do
+          # not need a ruleset bypass use the ephemeral GitHub token instead.
+          token: ${{ secrets.RELEASE_PAT || github.token }}
       - uses: actions/setup-node@v6
         with:
           node-version: 22
