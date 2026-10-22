@@ -34,7 +34,7 @@ Node on the default PATH is 26.10.0, outside this project's engine range. Valida
 
 ## Implementation
 
-- Merge all official changes at the target, including the two updates after the previously pending target: bundled Node runtime update and grammar-check crash/hang handling.
+- Merge all official changes through the final target, including the bundled Node runtime and grammar-check crash/hang fixes, JS/TS receiver-binding improvements, Delphi nested routines and extraction-hook cleanup.
 - Resolve CLI and site documentation conflicts by retaining both `vr` and the gated official `ui` command.
 - Retain Windows CRLF parsing and database/child-process cleanup, adopting equivalent or more complete official fixes and preserving the fork's additional SQLite connection close calls.
 - Merge upstream telemetry identity reset, cross-process consent rechecks and in-flight chunk guards with the fork's default-off, explicit-consent and temporary environment-override behavior. Update newly added transport tests to opt in explicitly.
@@ -56,7 +56,7 @@ The final incoming merge spans 1,150 official changed paths (762 official commit
 ## Commands and verification
 
 - `git fetch upstream`, official GitHub repository/release/commit/advisory API checks: completed.
-- Temporary Python restart wrapper via uv, delegating to `merge_official_upstream.py --apply` with the initial full pinned SHA: succeeded. Then `merge_official_upstream.py --upstream-ref 08478eea5323ce43ef7650e4968fa03a07fda6fa --advance --report _docs/2026-10-23_merge-advance.json` succeeded, preserving the resolved fork changes and advancing MERGE_HEAD to the final target. HEAD remains `9a4517eea57b9ac375cf097de407565c03ef02db`.
+- Temporary Python restart wrapper via uv, delegating to `merge_official_upstream.py --apply` with the initial full pinned SHA: succeeded. Then `merge_official_upstream.py --upstream-ref 08478eea5323ce43ef7650e4968fa03a07fda6fa --advance --report _docs/2026-10-23_merge-advance.json` succeeded, preserving the resolved fork changes and advancing MERGE_HEAD to the final target. The resulting two-parent merge commit is `531f7fa652ee52f21fe38a5164e20b426971541a`, with first parent `9a4517ee` and official second parent `08478eea`.
 - `npm install --package-lock-only --ignore-scripts`, followed by compatible `npm audit fix --package-lock-only --ignore-scripts`: resolved the conflicted lockfile, upgraded Vitest/mocker and source-map-js; audit reported 0 vulnerabilities.
 - `npm ci --ignore-scripts --no-fund`: 173 packages installed; audit reported 0 vulnerabilities.
 - `tsc --noEmit`: passed before dependency reinstall. After reinstall, direct `tsc --extendedDiagnostics` passed, compiling 494 files with strict project checks in 115.11 seconds.
@@ -91,7 +91,7 @@ Self-review-event: ticket_completed — the final target and custom entry points
 
 ## Handoff and reproduction
 
-The branch is in a resolved, staged, uncommitted merge state with the final official parent pinned at `08478eea5323ce43ef7650e4968fa03a07fda6fa`. No commit, push, release or production deployment was performed. Review the staged fork delta and evidence before making the merge commit. For future updates, use the driver's default plan/`--fetch`, then `--apply` from a clean worktree; `--advance` accepts only reviewed staged pending merges and descendant upstream updates. `--verify` is the structural check; retain the functional regression gates above.
+The merge was committed as `531f7fa652ee52f21fe38a5164e20b426971541a`. The clean local `main` worktree at `C:/Users/downl/Documents/New project/codegraph` was fast-forwarded to it, then `origin/main` was pushed successfully (`9a4517ee..531f7fa6`). No release or production deployment was performed. For future updates, use the driver's default plan/`--fetch`, then `--apply` from a clean worktree; `--advance` accepts only reviewed staged merges and descendant upstream updates. `--verify` is the structural check; retain the functional regression gates above.
 
 Example local verification (uv is not on this machine's PATH):
 
@@ -101,4 +101,4 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
 & "C:\Users\downl\.local\bin\uv.exe" run --no-project --python "C:\Users\downl\AppData\Local\Programs\Python\Python312\python.exe" python -B -m pytest scripts/tests/test_merge_official_upstream.py -q -p no:cacheprovider
 ```
 
-Recommended next action: review and commit this prepared merge. Re-index a working project's index when adopting the extraction/resolution improvements, as the official changelog requests; no existing user index was rebuilt by this synchronization task.
+Recommended next action: re-index a working project's index when adopting the extraction/resolution improvements, as the official changelog requests; no existing user index was rebuilt by this synchronization task.
