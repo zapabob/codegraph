@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 
 // Project page on GitHub Pages: https://zapabob.github.io/codegraph/
@@ -7,6 +8,9 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	site: 'https://zapabob.github.io',
 	base: '/codegraph',
+	// Preserve the existing docs pipeline and inline whitespace on Astro 7.
+	markdown: { processor: unified() },
+	compressHTML: true,
 	integrations: [
 		starlight({
 			title: 'codegraph',
@@ -74,6 +78,7 @@ export default defineConfig({
 					label: 'Guides',
 					items: [
 						{ label: 'Indexing a Project', slug: 'guides/indexing' },
+						{ label: 'Reading Your Graph in the Browser', slug: 'guides/viewer' },
 						{ label: 'Framework Routes', slug: 'guides/framework-routes' },
 						{ label: 'Affected Tests in CI', slug: 'guides/affected-tests' },
 					],

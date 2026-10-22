@@ -11,7 +11,7 @@
  * parallelism safe.
  */
 import { describe, it, expect } from 'vitest';
-import { ParseWorkerPool, resolveParsePoolSize, resolveParseTimeoutMs, type ParsePoolWorker, type ParseTask } from '../src/extraction/parse-pool';
+import { ParseWorkerPool, resolveParseBudgetMs, resolveParsePoolSize, resolveParseTimeoutMs, type ParsePoolWorker, type ParseTask } from '../src/extraction/parse-pool';
 import type { Language, ExtractionResult } from '../src/types';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -91,6 +91,17 @@ describe('resolveParseTimeoutMs', () => {
     expect(resolveParseTimeoutMs('abc')).toBe(10_000);
     expect(resolveParseTimeoutMs('0')).toBe(10_000);
     expect(resolveParseTimeoutMs('-5')).toBe(10_000);
+  });
+});
+
+describe('resolveParseBudgetMs', () => {
+  it('caps near-limit blob headers at a 20s soft / 60s hard window (#1555)', () => {
+    expect(resolveParseBudgetMs(10_000, 940_800)).toBe(20_000);
+    expect(resolveParseBudgetMs(10_000, 857_376)).toBe(20_000);
+  });
+
+  it('does not clamp an explicit larger base timeout', () => {
+    expect(resolveParseBudgetMs(45_000, 940_800)).toBe(45_000);
   });
 });
 
@@ -235,5 +246,84 @@ describe('ParseWorkerPool', () => {
     await pool.destroy();
     await expect(p).rejects.toThrow(/destroyed/);
     await expect(pool.requestParse(task('y.ts'))).rejects.toThrow(/destroyed/);
+  });
+});
+
+/**
+ * A fake whose grammar load takes `loadMs` (or never finishes, with `null`), and
+ * which records when it finished loading and when it was terminated.
+ */
+class SlowLoadWorker implements ParsePoolWorker {
+  private msgCb?: (m: unknown) => void;
+  private exitCb?: (code: number) => void;
+  loadedAt: number | null = null;
+  terminatedAt: number | null = null;
+  constructor(private loadMs: number | null) {}
+  on(event: string, cb: (...args: any[]) => void): void {
+    if (event === 'message') this.msgCb = cb;
+    else if (event === 'exit') this.exitCb = cb;
+  }
+  postMessage(msg: unknown): void {
+    if ((msg as { type: string }).type !== 'load-grammars' || this.loadMs === null) return;
+    setTimeout(() => {
+      if (this.terminatedAt !== null) return;
+      this.loadedAt = performance.now();
+      this.msgCb?.({ type: 'grammars-loaded' });
+    }, this.loadMs);
+  }
+  exit(code: number): void { this.exitCb?.(code); }
+  terminate(): Promise<number> { this.terminatedAt = performance.now(); return Promise.resolve(0); }
+}
+
+describe('teardown never terminates a worker mid-load', () => {
+  // Terminating a worker whose grammar WASM is still compiling can crash the
+  // process with an access violation (0xC0000005) on Windows; a pool torn down
+  // right after a short index often has a late-spawned worker in that state.
+  const poolOf = (worker: SlowLoadWorker, loadSettleMs?: number) =>
+    new ParseWorkerPool({ languages: ['typescript'] as Language[], size: 1, createWorker: () => worker, loadSettleMs });
+
+  it('waits for a loading worker to finish before terminating it', async () => {
+    const w = new SlowLoadWorker(120);
+    const pool = poolOf(w);
+    await pool.destroy();
+    expect(w.loadedAt).not.toBeNull();
+    expect(w.terminatedAt).not.toBeNull();
+    expect(w.terminatedAt!).toBeGreaterThanOrEqual(w.loadedAt!);
+  });
+
+  it('terminates a worker that is already loaded right away', async () => {
+    const w = new SlowLoadWorker(0);
+    const pool = poolOf(w);
+    await sleep(20);
+    expect(w.loadedAt).not.toBeNull();
+    const t0 = performance.now();
+    await pool.destroy();
+    expect(w.terminatedAt! - t0).toBeLessThan(50);
+  });
+
+  it('does not wait past the cap on a load that never finishes', async () => {
+    const w = new SlowLoadWorker(null);
+    const pool = poolOf(w, 80);
+    const t0 = performance.now();
+    await pool.destroy();
+    expect(w.terminatedAt).not.toBeNull();
+    expect(w.terminatedAt! - t0).toBeGreaterThanOrEqual(70);
+    expect(w.terminatedAt! - t0).toBeLessThan(1000);
+  });
+
+  it('does not wait on a worker that died while loading', async () => {
+    const w = new SlowLoadWorker(null);
+    // The pool respawns a crashed worker; the replacement loads normally. The
+    // default 15s cap stays, so waiting on the dead one would time the test out.
+    const workers = [w];
+    const pool = new ParseWorkerPool({
+      languages: ['typescript'] as Language[], size: 1,
+      createWorker: () => workers.shift() ?? new SlowLoadWorker(0),
+    });
+    w.exit(1);
+    await sleep(20);
+    const t0 = performance.now();
+    await pool.destroy();
+    expect(performance.now() - t0).toBeLessThan(200);
   });
 });

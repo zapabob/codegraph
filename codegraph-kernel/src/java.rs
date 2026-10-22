@@ -124,6 +124,7 @@ pub struct Walker<'t> {
     file_path: &'t str,
     line_starts: Vec<usize>,
     arena: Arena,
+    node_id_allocator: ids::NodeIdAllocator,
     tables: Tables,
     stack: Vec<Scope>,
     nodes_meta: Vec<NodeMeta>,
@@ -157,6 +158,7 @@ pub fn extract(file_path: &str, source: &str) -> Result<EmitOut, String> {
         file_path,
         line_starts: util::line_starts(source),
         arena: Arena::default(),
+        node_id_allocator: ids::NodeIdAllocator::default(),
         tables: Tables::default(),
         stack: Vec::new(),
         nodes_meta: Vec::new(),
@@ -265,7 +267,7 @@ impl<'t> Walker<'t> {
     fn inside_class_like(&self) -> bool {
         self.stack
             .last()
-            .map(|s| matches!(s.kind, "class" | "struct" | "interface" | "trait" | "enum" | "module"))
+            .map(|s| matches!(s.kind, "class" | "struct" | "interface" | "trait" | "enum" | "module" | "enum_member"))
             .unwrap_or(false)
     }
 
@@ -300,7 +302,8 @@ impl<'t> Walker<'t> {
             return None;
         }
         let start_line = self.line_of(node);
-        let id = ids::node_id(self.file_path, kind, name, start_line);
+        let column = self.col_of(node);
+        let id = self.node_id_allocator.generate(self.file_path, kind, name, start_line, column);
         let end_line = node.end_position().row as u32 + 1; // no resolveBody for java
 
         let qualified = {
@@ -485,6 +488,7 @@ impl<'t> Walker<'t> {
     // --- the dispatcher (visitNode, Java-relevant branches) -----------------------
 
     fn visit_node(&mut self, node: Node<'t>) {
+        stack_guard!();
         let kind = node.kind();
         let mut skip_children = false;
 
@@ -503,12 +507,14 @@ impl<'t> Walker<'t> {
             self.extract_enum(node);
             skip_children = true;
         } else if kind == "field_declaration" && self.inside_class_like() {
-            self.extract_field(node);
-            self.scan_fn_ref_subtree(node, 0);
+            // The initializers extract_field walked under their fields took
+            // their own candidates; the scan covers the rest.
+            let walked = self.extract_field(node);
+            self.scan_fn_ref_subtree(node, 0, &walked);
             skip_children = true;
         } else if kind == "local_variable_declaration" && !self.inside_class_like() {
             self.extract_variable(node);
-            self.scan_fn_ref_subtree(node, 0);
+            self.scan_fn_ref_subtree(node, 0, &[]);
             skip_children = true;
         } else if kind == "import_declaration" {
             self.extract_import(node);
@@ -534,10 +540,12 @@ impl<'t> Walker<'t> {
     // --- visitFunctionBody ----------------------------------------------------------
 
     fn visit_function_body(&mut self, body: Node<'t>) {
+        stack_guard!();
         self.visit_for_calls_and_structure(body);
     }
 
     fn visit_for_calls_and_structure(&mut self, node: Node<'t>) {
+        stack_guard!();
         let kind = node.kind();
         self.maybe_capture_fn_refs(node);
 
@@ -577,6 +585,7 @@ impl<'t> Walker<'t> {
     // --- extractors --------------------------------------------------------------
 
     fn extract_class(&mut self, node: Node<'t>) {
+        stack_guard!();
         let name = self.extract_name(node);
         let extra = Extra {
             docstring: preceding_docstring(node, self.src),
@@ -600,6 +609,7 @@ impl<'t> Walker<'t> {
     }
 
     fn extract_method(&mut self, node: Node<'t>) {
+        stack_guard!();
         if !self.inside_class_like() {
             // (object-literal parents don't exist in Java; a stray top-level
             // method extracts as a function, mirroring extractMethod's tail)
@@ -627,6 +637,7 @@ impl<'t> Walker<'t> {
 
     /// extractFunction — only reachable for a method outside any class.
     fn extract_function(&mut self, node: Node<'t>) {
+        stack_guard!();
         let name = self.extract_name(node);
         if name == "<anonymous>" {
             if let Some(body) = node.child_by_field_name("body") {
@@ -653,6 +664,7 @@ impl<'t> Walker<'t> {
     }
 
     fn extract_interface(&mut self, node: Node<'t>) {
+        stack_guard!();
         let name = self.extract_name(node);
         let extra = Extra {
             docstring: preceding_docstring(node, self.src),
@@ -671,6 +683,7 @@ impl<'t> Walker<'t> {
     }
 
     fn extract_enum(&mut self, node: Node<'t>) {
+        stack_guard!();
         let Some(body) = node.child_by_field_name("body") else { return };
         let name = self.extract_name(node);
         let extra = Extra {
@@ -684,7 +697,8 @@ impl<'t> Walker<'t> {
         for i in 0..body.named_child_count() {
             let Some(child) = body.named_child(i) else { continue };
             if child.kind() == "enum_constant" {
-                self.extract_enum_members(child);
+                let member = self.extract_enum_members(child);
+                self.visit_enum_constant_body(child, member);
             } else {
                 self.visit_node(child);
             }
@@ -692,16 +706,33 @@ impl<'t> Walker<'t> {
         self.stack.pop();
     }
 
-    fn extract_enum_members(&mut self, node: Node<'t>) {
-        if let Some(name_node) = node.child_by_field_name("name") {
-            let name = self.text(name_node).to_string();
-            self.create_node("enum_member", &name, node, Extra::default());
-        }
+    fn extract_enum_members(&mut self, node: Node<'t>) -> Option<(u32, String)> {
+        let name_node = node.child_by_field_name("name")?;
+        let name = self.text(name_node).to_string();
+        let row = self.create_node("enum_member", &name, node, Extra::default())?;
         // (identifier-children / leaf fallbacks are other grammars' shapes)
+        Some((row, name))
     }
 
-    /// extractField — each declarator becomes a field/constant node.
-    fn extract_field(&mut self, node: Node<'t>) {
+    /// `PLUS { int apply(…) { … } }`: a constant's own class_body declares
+    /// members of its own, scoped under the constant.
+    fn visit_enum_constant_body(&mut self, node: Node<'t>, member: Option<(u32, String)>) {
+        let Some((row, name)) = member else { return };
+        let Some(body) = (0..node.named_child_count()).filter_map(|i| node.named_child(i)).find(|c| c.kind() == "class_body") else { return };
+        self.stack.push(Scope { row, kind: "enum_member", name });
+        for i in 0..body.named_child_count() {
+            if let Some(c) = body.named_child(i) {
+                self.visit_node(c);
+            }
+        }
+        self.stack.pop();
+    }
+
+    /// extractField — each declarator becomes a field/constant node. Returns
+    /// the initializers walked under their fields, for the declaration scan to
+    /// skip.
+    fn extract_field(&mut self, node: Node<'t>) -> Vec<usize> {
+        let mut walked = Vec::new();
         let docstring = preceding_docstring(node, self.src);
         let visibility = self.visibility_of(node);
         let is_static = Some(self.is_static(node));
@@ -751,6 +782,17 @@ impl<'t> Walker<'t> {
                 if let Some(row) = row {
                     self.extract_decorators_for(node, row);
                     self.extract_type_annotations(node, row);
+                    // Walk the initializer ATTRIBUTED to the declared field
+                    // (#693, the Go fix): the dispatcher only fn-ref-scans this
+                    // subtree, so a lambda / method reference / anonymous class
+                    // in `private final Runnable r = () -> target();` emitted no
+                    // call edge at all.
+                    if let Some(value) = decl.child_by_field_name("value") {
+                        self.stack.push(Scope { row, kind: field_kind, name: name.clone() });
+                        self.visit_function_body(value);
+                        self.stack.pop();
+                        walked.push(value.id());
+                    }
                 }
             }
         } else {
@@ -769,6 +811,7 @@ impl<'t> Walker<'t> {
                 );
             }
         }
+        walked
     }
 
     /// extractVariable's generic fallback (top-level locals — rare in Java).
@@ -902,6 +945,7 @@ impl<'t> Walker<'t> {
 
     /// extractAnonymousClass — `new T() { ... }`.
     fn extract_anonymous_class(&mut self, node: Node<'t>, body: Node<'t>) {
+        stack_guard!();
         let type_node = node
             .child_by_field_name("constructor")
             .or_else(|| node.child_by_field_name("type"))
@@ -1101,6 +1145,7 @@ impl<'t> Walker<'t> {
     }
 
     fn extract_type_refs_from_subtree(&mut self, node: Node<'t>, from_row: u32) {
+        stack_guard!();
         if node.kind() == "type_identifier" {
             let type_name = self.text(node).to_string();
             if !type_name.is_empty() && !is_builtin_type(&type_name) {
@@ -1192,8 +1237,13 @@ impl<'t> Walker<'t> {
         }
     }
 
-    fn scan_fn_ref_subtree(&mut self, node: Node<'t>, depth: u32) {
+    fn scan_fn_ref_subtree(&mut self, node: Node<'t>, depth: u32, walked: &[usize]) {
+        stack_guard!();
         if depth > 12 {
+            return;
+        }
+        // Subtrees the body walker has already been through.
+        if walked.contains(&node.id()) {
             return;
         }
         // (functionTypes is empty for Java; lambda_expression halts the scan)
@@ -1203,7 +1253,7 @@ impl<'t> Walker<'t> {
         self.maybe_capture_fn_refs(node);
         for i in 0..node.named_child_count() {
             if let Some(c) = node.named_child(i) {
-                self.scan_fn_ref_subtree(c, depth + 1);
+                self.scan_fn_ref_subtree(c, depth + 1, walked);
             }
         }
     }

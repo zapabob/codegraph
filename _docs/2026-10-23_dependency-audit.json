@@ -1,0 +1,105 @@
+{
+  "passed": true,
+  "projects": {
+    ".": {
+      "exit_code": 0,
+      "report": {
+        "auditReportVersion": 2,
+        "vulnerabilities": {},
+        "metadata": {
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          },
+          "dependencies": {
+            "prod": 52,
+            "dev": 173,
+            "optional": 53,
+            "peer": 0,
+            "peerOptional": 0,
+            "total": 224
+          }
+        }
+      }
+    },
+    "site": {
+      "exit_code": 0,
+      "report": {
+        "auditReportVersion": 2,
+        "vulnerabilities": {},
+        "metadata": {
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          },
+          "dependencies": {
+            "prod": 349,
+            "dev": 0,
+            "optional": 88,
+            "peer": 0,
+            "peerOptional": 0,
+            "total": 436
+          }
+        }
+      }
+    },
+    "telemetry-worker": {
+      "exit_code": 0,
+      "report": {
+        "auditReportVersion": 2,
+        "vulnerabilities": {},
+        "metadata": {
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          },
+          "dependencies": {
+            "prod": 1,
+            "dev": 92,
+            "optional": 60,
+            "peer": 0,
+            "peerOptional": 0,
+            "total": 92
+          }
+        }
+      }
+    },
+    "telemetry-dashboard": {
+      "exit_code": 0,
+      "report": {
+        "auditReportVersion": 2,
+        "vulnerabilities": {},
+        "metadata": {
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          },
+          "dependencies": {
+            "prod": 1,
+            "dev": 94,
+            "optional": 60,
+            "peer": 0,
+            "peerOptional": 0,
+            "total": 94
+          }
+        }
+      }
+    }
+  }
+}

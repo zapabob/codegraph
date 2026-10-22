@@ -67,6 +67,7 @@ export const EDGE_KINDS = [
   'instantiates',    // Creates instance of class
   'overrides',       // Method overrides parent method
   'decorates',       // Decorator applied to symbol
+  'navigates',       // Navigates to a screen/route (Expo Router `router.push('/x')`)
 ] as const;
 
 export type EdgeKind = (typeof EDGE_KINDS)[number];
@@ -262,6 +263,24 @@ export interface FileRecord {
    * `undefined` as "content signal unknown, fall back to the path check".
    */
   generated?: boolean;
+}
+
+/**
+ * Indexed files whose symbols are missing even though their content hash is
+ * current — what a hash comparison alone calls "up to date" (#2336). Paths are
+ * project-relative and sorted.
+ */
+export interface IndexHealth {
+  /**
+   * Files `sync` re-indexes: stored while their grammar could not load (#2335)
+   * or stored with no nodes and no recorded reason (#1541).
+   */
+  needsReindex: string[];
+  /**
+   * Files with a recorded parse error and no symbols from it. Deterministic:
+   * they stay this way until the file (or the parser) changes.
+   */
+  parseErrors: string[];
 }
 
 // =============================================================================
@@ -688,4 +707,13 @@ export interface FindRelevantContextOptions {
 
   /** Node types to include */
   nodeKinds?: NodeKind[];
+
+  /**
+   * Extra symbol names to merge in as exact-name search candidates, at a
+   * dampened score. Fed by the segment-vocabulary supplement (CodeGraph.
+   * findRelevantContext): word-level query terms can't reach camelCase names
+   * through FTS — `pinFeedIfNearBottom` is one FTS token — so names whose
+   * SEGMENTS the query's words name are seeded here instead.
+   */
+  seedNames?: string[];
 }

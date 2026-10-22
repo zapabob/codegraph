@@ -13,15 +13,21 @@
 #   scripts/build-bundle.sh <target> [node-version]
 #     target:        darwin-arm64 | darwin-x64 | linux-x64 | linux-arm64
 #                  | win32-x64 | win32-arm64
-#     node-version:  e.g. v24.16.0 (default below; pin for reproducible builds)
+#     node-version:  e.g. v24.21.0 (default below; pin for reproducible builds)
 #
 # Output:
 #   unix:    release/codegraph-<target>.tar.gz   (launcher: bin/codegraph)
-#   windows: release/codegraph-<target>.zip      (launcher: bin/codegraph.cmd)
+#   windows: release/codegraph-<target>.zip      (launchers: bin/codegraph + .cmd)
 set -euo pipefail
 
 TARGET="${1:?usage: build-bundle.sh <target> [node-version]}"
-NODE_VERSION="${2:-v24.16.0}"
+# The release workflow passes no version, so this default is the Node every
+# release bundles. Keep it on 24.x (the CLI refuses Node 25+) and at 24.20.0 or
+# later: older 24.x releases can abort on Windows just as the process exits,
+# after its work is done, with 0xC0000409 and "Assertion failed:
+# !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c" (nodejs/node#56645,
+# fixed by nodejs/node#61999 in 24.20.0; issue #2617).
+NODE_VERSION="${2:-v24.21.0}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/release"
@@ -63,8 +69,17 @@ echo "[bundle] building app"
 STAGE="$WORK/codegraph-${TARGET}"
 mkdir -p "$STAGE/lib" "$STAGE/bin"
 cp -R "$ROOT/dist" "$STAGE/lib/dist"
+# The browser viewer rides along inside dist/viewer (built by `npm run build`
+# above). Fail here rather than shipping a bundle whose `codegraph ui` serves
+# a 404 — the copy is verified, not assumed.
+node "$ROOT/scripts/check-ui-build.mjs" --root "$STAGE/lib"
 cp "$ROOT/package.json" "$ROOT/package-lock.json" "$STAGE/lib/"
 echo "[bundle] installing production dependencies"
+# The staged package.json declares the `ui` workspace but the bundle carries
+# no ui/ source — only its build output. That is fine: ui/ has dev
+# dependencies only, so --omit=dev skips the workspace outright and no link
+# is created. (If a future npm starts erroring on the absent folder, stage a
+# stub ui/package.json before this line rather than editing the lock.)
 ( cd "$STAGE/lib" && npm ci --omit=dev --ignore-scripts >/dev/null 2>&1 )
 rm -f "$STAGE/lib/package-lock.json"
 
@@ -103,6 +118,15 @@ if [ "$OSFAM" = "win32" ]; then
   cp "$NODE_BIN" "$STAGE/node.exe"
   printf '@"%%~dp0..\\node.exe" --liftoff-only --disable-warning=ExperimentalWarning "%%~dp0..\\lib\\dist\\bin\\codegraph.js" %%*\r\n' \
     > "$STAGE/bin/codegraph.cmd"
+  # Git Bash (including Claude Code hooks) does not resolve .cmd via PATHEXT.
+  cat > "$STAGE/bin/codegraph" <<'LAUNCH'
+#!/bin/sh
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Preserve an inherited CODEGRAPH_HOST_PPID; do not replace it with MSYS's
+# $PPID, which is not a native Windows PID usable by the orphan watchdog.
+exec "$DIR/node.exe" --liftoff-only --disable-warning=ExperimentalWarning "$DIR/lib/dist/bin/codegraph.js" "$@"
+LAUNCH
+  chmod +x "$STAGE/bin/codegraph"
 else
   cp "$NODE_BIN" "$STAGE/node"
   cat > "$STAGE/bin/codegraph" <<'LAUNCH'

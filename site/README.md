@@ -1,5 +1,8 @@
 # Starlight Starter Kit: Basics
 
+Build this site with Node.js 22.23.4 or newer (Node 24 LTS is suitable). The
+site's Astro toolchain has a newer minimum than the engine's Node 22 runtime.
+
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
 ```

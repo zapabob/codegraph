@@ -12,6 +12,7 @@ codegraph uninit [path]           # Remove CodeGraph from a project (--force to 
 codegraph index [path]            # Full re-index from scratch (--force, --quiet, --verbose)
 codegraph sync [path]             # Incremental update (--quiet)
 codegraph status [path]           # Show statistics (--json)
+codegraph ui [path]               # Open the browser viewer (not released yet — see below)
 codegraph unlock [path]           # Remove a stale lock file that's blocking indexing
 codegraph query <search>          # Search symbols (--kind, --limit, --json)
 codegraph explore <query>         # Relevant symbols' source + call paths in one shot (same output as the codegraph_explore MCP tool)
@@ -63,3 +64,23 @@ codegraph vr . --export site/public/vr --label codegraph --no-git4d
 ```
 
 `--quest` binds to `0.0.0.0` and prints a LAN URL. `--export` writes `index.html`, `style.css`, `client.js`, and a bounded `graph.json` so a static host such as GitHub Pages can serve the same viewer; it strips the local project root and Git4D diagnostic paths, and `--label` supplies the public project name. Immersive WebXR requires a secure context; `localhost` is suitable through Virtual Desktop, while standalone headset browsers may need `--tls-cert` and `--tls-key`.
+
+## ui
+
+:::note[Not released yet]
+The viewer isn't in a CodeGraph release yet: `codegraph ui` arrives in an upcoming release. This page describes it ahead of that.
+:::
+
+`codegraph ui` opens the [browser viewer](/codegraph/guides/viewer/) for a project you have already indexed: callers on the left, the symbol's source in the middle, and what it calls on the right at the height of the line that calls it.
+
+```bash
+codegraph ui                     # the project you're standing in
+codegraph ui ~/code/my-app       # a project indexed elsewhere
+codegraph ui --port 8080         # pin a port (fails if it's taken)
+codegraph ui --no-open           # just print the URL (headless boxes, SSH)
+codegraph ui --read-only         # refuse every write, including saved trails
+```
+
+Without `--port` it takes 4747, or the next free port. `CODEGRAPH_BROWSER=<command>` chooses which browser opens; `CODEGRAPH_BROWSER=none` never opens one. `codegraph web` is an alias.
+
+The viewer listens on `127.0.0.1` only: it opens an index that already exists, never creates one, never changes your graph or a line of your code, and sends nothing anywhere. The one thing it writes is a trail you asked it to save, under `.codegraph/ui/trails/`; `--read-only` refuses even that.

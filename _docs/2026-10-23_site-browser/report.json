@@ -1,0 +1,79 @@
+{
+  "checks": [
+    {
+      "page": "home",
+      "viewport": "desktop",
+      "path": "/codegraph/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\home-desktop.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "spatial",
+      "viewport": "desktop",
+      "path": "/codegraph/vr-ar-desktop/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\spatial-desktop.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "cli",
+      "viewport": "desktop",
+      "path": "/codegraph/reference/cli/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\cli-desktop.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "viewer",
+      "viewport": "desktop",
+      "path": "/codegraph/vr/",
+      "graph_status": "1200 nodes, 2797 edges, git4d: none",
+      "screenshot": "_docs\\2026-10-23_site-browser\\viewer-desktop.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "home",
+      "viewport": "mobile",
+      "path": "/codegraph/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\home-mobile.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "spatial",
+      "viewport": "mobile",
+      "path": "/codegraph/vr-ar-desktop/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\spatial-mobile.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "cli",
+      "viewport": "mobile",
+      "path": "/codegraph/reference/cli/",
+      "screenshot": "_docs\\2026-10-23_site-browser\\cli-mobile.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    },
+    {
+      "page": "viewer",
+      "viewport": "mobile",
+      "path": "/codegraph/vr/",
+      "graph_status": "1200 nodes, 2797 edges, git4d: none",
+      "screenshot": "_docs\\2026-10-23_site-browser\\viewer-mobile.png",
+      "passed": true,
+      "console_errors": [],
+      "failed_assets": []
+    }
+  ],
+  "passed": true
+}
